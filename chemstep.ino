@@ -39,7 +39,7 @@
 #define STR_HELPER(x)     #x
 #define STR(x)            STR_HELPER(x)
 
-#define APP_NAME          "SyringePump"
+#define APP_NAME          "ChemStep"
 #define APP_VERSION_MAJOR 2
 #define APP_VERSION_MINOR 1
 #define APP_STR           APP_NAME " V" STR(APP_VERSION_MAJOR) "." STR(APP_VERSION_MINOR)
