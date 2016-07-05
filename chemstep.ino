@@ -1,12 +1,6 @@
-// Controls a stepper motor via an LCD keypad shield.
-// Accepts triggers and serial commands.
-// To run, you will need the LCDKeypad library installed - see libraries dir.
-
-// Serial commands:
-// Set serial baud rate to 115200 and terminate commands with newlines.
-// Send a number, e.g. "100", to set bolus size.
-// Send a "+" to push that size bolus.
-// Send a "-" to pull that size bolus.
+// ChemStep
+// Controls stepper motor from LCD keypad shield.
+// Some serial control, not done yet.
 
 #include <limits.h>
 
