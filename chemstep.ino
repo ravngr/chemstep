@@ -87,7 +87,7 @@ static int8_t stepSpeedSelect = 3;
 /* -- Default Parameters -- */
 typedef enum {STEP_FWD, STEP_REV} stepper_dir_t;
 
-stepper_dir_t stepper_dir = STEP_FWD;
+stepper_dir_t stepper_dir = STEP_REV;
 bool stepperState = false;
 long stepperPosition = 0;
 long stepperTarget = 0;
@@ -473,12 +473,12 @@ void loop() {
           if (stepper_dir == STEP_FWD) {
             if (stepperTarget < stepperPosition) {
               stepper_dir = STEP_REV;
-              digitalWrite(PIN_MOTOR_DIR, LOW);
+              digitalWrite(PIN_MOTOR_DIR, HIGH);
             }
           } else {
             if (stepperTarget > stepperPosition) {
               stepper_dir = STEP_FWD;
-              digitalWrite(PIN_MOTOR_DIR, HIGH);
+              digitalWrite(PIN_MOTOR_DIR, LOW);
             }
           }
           
