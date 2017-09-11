@@ -35,7 +35,7 @@
 
 #define APP_NAME          "ChemStep"
 #define APP_VERSION_MAJOR 2
-#define APP_VERSION_MINOR 1
+#define APP_VERSION_MINOR 2
 #define APP_STR           APP_NAME " V" STR(APP_VERSION_MAJOR) "." STR(APP_VERSION_MINOR)
 
 /* -- Configuration -- */
@@ -130,13 +130,13 @@ void updateInterval() {
 
 void get_lcd_key(key_t *current_key, bool *updated) {
   static key_t lastKey = KEY_NONE;
-  static long lastKeyMillis = 0;
+  static unsigned long lastKeyMillis = 0;
   key_t key = KEY_NONE;
 
   *updated = false;
 
   int adcValue = analogRead(PIN_LCD_BUTTON);
-  
+
   for (unsigned char n = 0; n < KEYPAD_COUNT; n++) {
     if (adcValue < keyAdcThreshold[n]) {
       key = (key_t) n;
@@ -155,7 +155,7 @@ void get_lcd_key(key_t *current_key, bool *updated) {
   } else {
     lastKeyMillis = millis();
   }
-  
+
   *current_key = key;
 }
 
@@ -197,7 +197,7 @@ void updateSerial() {
 
   if (serialProcess) {
     Serial.println();
-    
+
     // Terminate string
     serialBuffer[serialCount] = '\0';
 
@@ -217,7 +217,7 @@ void updateSerial() {
         case 'a':
           // Absolute target
           break;
-        
+
         case '+':
           Serial.println("FWD");
           stepperTarget++;
@@ -230,15 +230,15 @@ void updateSerial() {
       }
     } else {
       // Numerical input
-      
+
     }
-    
+
     /*Serial.print("Process [");
     Serial.print(serialBuffer);
     Serial.print("] (");
     Serial.print(serialCount, DEC);
     Serial.println(")");*/
-    
+
     // Reset state
     serialCount = 0;
   }
@@ -247,7 +247,7 @@ void updateSerial() {
 
 void updateInput() {
   key_t key;
-  bool updated; 
+  bool updated;
   static long held_time;
   static boolean held = false;
 
@@ -263,12 +263,12 @@ void updateInput() {
         // Move backward
         stepperTarget -= (long) (MECH_STEPS_PER_MM * stepSize[stepSizeSelect]);
         break;
-  
+
       case KEY_RIGHT:
         // Move forward
         stepperTarget += (long) (MECH_STEPS_PER_MM * stepSize[stepSizeSelect]);
         break;
-  
+
       case KEY_UP:
         // Increment setting
         switch (ui_state) {
@@ -277,9 +277,9 @@ void updateInput() {
             stepSizeSelect = 0;
 
           EEPROM.write(EEPROM_STEP, stepSizeSelect);
-          
+
           break;
-  
+
         case UI_SPEED:
           if (++stepSpeedSelect >= STEP_SPD_COUNT)
             stepSpeedSelect = 0;
@@ -287,12 +287,12 @@ void updateInput() {
           EEPROM.write(EEPROM_SPEED, stepSpeedSelect);
 
           updateInterval();
-          
+
           break;
         }
-  
+
         break;
-  
+
       case KEY_DOWN:
         // Decrement setting
         switch (ui_state) {
@@ -301,9 +301,9 @@ void updateInput() {
             stepSizeSelect = STEP_SIZE_COUNT - 1;
 
           EEPROM.write(EEPROM_STEP, stepSizeSelect);
-          
+
           break;
-  
+
         case UI_SPEED:
           if (stepSpeedSelect-- == 0)
             stepSpeedSelect = STEP_SPD_COUNT - 1;
@@ -311,19 +311,23 @@ void updateInput() {
           EEPROM.write(EEPROM_SPEED, stepSpeedSelect);
 
           updateInterval();
-          
+
           break;
         }
-        
+
         break;
-  
+
       case KEY_SELECT:
         // Switch display modes
         ui_state = (ui_state_t) ((int) ui_state + 1);
-  
+
         if (ui_state >= UI_STATE_COUNT)
           ui_state = (ui_state_t) 0;
-        
+
+        break;
+
+      default:
+        // Do nothing (prevents compiler warning)
         break;
       }
 
@@ -342,11 +346,11 @@ void updateInput() {
       // Reset position
       stepperTarget = 0;
       stepperPosition = 0;
-      
+
       ui_redraw = true;
       held_time = millis();
     }
-    
+
     held = true;
   } else if (held) {
     // Stop movment
@@ -362,7 +366,7 @@ void updateInput() {
 void updateLCD() {
   if (!ui_redraw)
     return;
-  
+
   lcd.clear();
 
   // Display position
@@ -393,10 +397,10 @@ void updateLCD() {
 
 void setup(){
   int8_t x;
-  
+
   /* Serial setup */
   Serial.begin(SERIAL_SPEED);
-  
+
   /* LCD setup */
   lcd.begin(LCD_WIDTH, LCD_HEIGHT);
 
@@ -416,7 +420,7 @@ void setup(){
   triggerBigBounce.attach(PIN_TRIGGER_BIG, INPUT_PULLUP);
   triggerDirBounce.attach(PIN_TRIGGER_DIR, INPUT_PULLUP);
   triggerStepBounce.attach(PIN_TRIGGER_STEP, INPUT_PULLUP);
-  
+
   pinMode(PIN_ENDSTOP_MIN, INPUT_PULLUP);
   pinMode(PIN_ENDSTOP_MAX, INPUT_PULLUP);
 
@@ -428,7 +432,7 @@ void setup(){
 
   if (x >= 0 && x < STEP_SIZE_COUNT)
     stepSizeSelect = x;
-  
+
   x = EEPROM.read(EEPROM_SPEED);
 
   if (x >= 0 && x < STEP_SPD_COUNT)
@@ -441,14 +445,14 @@ void setup(){
 void loop() {
 
   bool moving = false;
-  
+
   while (1) {
     // Process any waiting serial commands
     updateSerial();
-    
+
     // Check external inputs
     updateInput();
-    
+
     // Restrict motion when endstops are hit
     if (stepperTarget > stepperPosition && digitalRead(PIN_ENDSTOP_MIN) == LOW)
       stepperTarget = stepperPosition;
@@ -463,7 +467,7 @@ void loop() {
         lcd.print(">");
         moving = true;
       }
-      
+
       if (micros() >= nextStep) {
         // Calculate time for next step
         nextStep = micros() + stepInterval;
@@ -481,7 +485,7 @@ void loop() {
               digitalWrite(PIN_MOTOR_DIR, LOW);
             }
           }
-          
+
           digitalWrite(PIN_MOTOR_STEP, HIGH);
         } else {
           digitalWrite(PIN_MOTOR_STEP, LOW);
@@ -503,13 +507,12 @@ void loop() {
         ui_redraw = true;
         moving = false;
       }
-      
+
       // Force next step if necessary
       nextStep = 0;
-      
+
       // Update LCD
       updateLCD();
     }
   }
 }
-
