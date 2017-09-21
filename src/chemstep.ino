@@ -12,6 +12,8 @@
 /* -- Pin definitions -- */
 #define PIN_MOTOR_DIR     2
 #define PIN_MOTOR_STEP    3
+//#define PIN_MOTOR_nEN     4
+//#define PIN_MOTOR_STEP_SEL  5
 
 #define PIN_TRIGGER       A2
 #define PIN_TRIGGER_BIG   A3
@@ -41,6 +43,7 @@
 /* -- Configuration -- */
 #define SERIAL_SPEED      115200
 #define SERIAL_BUFFER_LEN 128
+#define SERIAL_LAG_DETECT
 
 /* -- Constants -- */
 #define LCD_WIDTH         16
@@ -50,6 +53,7 @@
 #define MECH_STEP_REV     200.0f
 //#define MECH_STEP_MICRO   16.0f
 #define MECH_STEP_MICRO   4.0f
+#define MECH_DIR_INVERT
 
 #define MECH_STEPS_PER_MM (MECH_STEP_REV * MECH_STEP_MICRO / MECH_THREAD_PITCH)
 
@@ -426,6 +430,11 @@ void setup(){
 
   pinMode(PIN_MOTOR_STEP, OUTPUT);
   pinMode(PIN_MOTOR_DIR, OUTPUT);
+  //pinMode(PIN_MOTOR_nEN, OUTPUT);
+  //pinMode(PIN_MOTOR_STEP_SEL, OUTPUT);
+
+  //digitalWrite(PIN_MOTOR_nEN, LOW);
+  //digitalWrite(PIN_MOTOR_STEP_SEL, LOW);
 
   // Load settings
   x = EEPROM.read(EEPROM_STEP);
@@ -477,12 +486,22 @@ void loop() {
           if (stepper_dir == STEP_FWD) {
             if (stepperTarget < stepperPosition) {
               stepper_dir = STEP_REV;
+
+#ifndef MECH_DIR_INVERT
               digitalWrite(PIN_MOTOR_DIR, HIGH);
+#else
+              digitalWrite(PIN_MOTOR_DIR, LOW);
+#endif
             }
           } else {
             if (stepperTarget > stepperPosition) {
               stepper_dir = STEP_FWD;
+
+#ifndef MECH_DIR_INVERT
               digitalWrite(PIN_MOTOR_DIR, LOW);
+#else
+              digitalWrite(PIN_MOTOR_DIR, HIGH);
+#endif
             }
           }
 
@@ -498,9 +517,11 @@ void loop() {
         stepperState = !stepperState;
 
         // Check for loop lag (which will make the lag worse...)
+#ifdef SERIAL_LAG_DETECT
         if (micros() > nextStep) {
           Serial.println("LAG!");
         }
+#endif
       }
     } else {
       if (moving) {
