@@ -43,16 +43,16 @@
 /* -- Configuration -- */
 #define SERIAL_SPEED      115200
 #define SERIAL_BUFFER_LEN 128
-#define SERIAL_LAG_DETECT
+//#define SERIAL_LAG_DETECT
 
 /* -- Constants -- */
 #define LCD_WIDTH         16
 #define LCD_HEIGHT        2
 
-#define MECH_THREAD_PITCH 1.25f
+#define MECH_THREAD_PITCH 5.0f
 #define MECH_STEP_REV     200.0f
 //#define MECH_STEP_MICRO   16.0f
-#define MECH_STEP_MICRO   4.0f
+#define MECH_STEP_MICRO   1.0f
 #define MECH_DIR_INVERT
 
 #define MECH_STEPS_PER_MM (MECH_STEP_REV * MECH_STEP_MICRO / MECH_THREAD_PITCH)
@@ -75,17 +75,19 @@ typedef enum { UI_STEP = 0, UI_SPEED } ui_state_t;
 bool ui_redraw = true;
 ui_state_t ui_state = UI_STEP;
 
-#define STEP_SIZE_COUNT 9
-#define STEP_SPD_COUNT 7
+#define STEP_SIZE_COUNT 10
+#define STEP_SPD_COUNT 9
 
 #define EEPROM_STEP   0x00
 #define EEPROM_SPEED  0x01
 
-const static float stepSize[STEP_SIZE_COUNT] = {0.10f, 0.25f, 0.50f, 1.00f, 2.50f, 5.00f, 10.00f, 25.00f, 50.00f};
+//const static float stepSize[STEP_SIZE_COUNT] = {0.10f, 0.25f, 0.50f, 1.00f, 2.50f, 5.00f, 10.00f, 25.00f, 50.00f};
+const static float stepSize[STEP_SIZE_COUNT] = {1.00f, 2.50f, 5.00f, 10.00f, 25.00f, 50.00f, 75.0f, 100.0f, 125.0f, 150.0f};
 static int8_t stepSizeSelect = 3;
 static unsigned long stepInterval = 0;
 
-const static float stepSpeed[STEP_SPD_COUNT] = {0.1f, 0.2f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f};
+//const static float stepSpeed[STEP_SPD_COUNT] = {0.1f, 0.2f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f};
+const static float stepSpeed[STEP_SPD_COUNT] = {5.0f, 10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
 static int8_t stepSpeedSelect = 3;
 
 /* -- Default Parameters -- */
