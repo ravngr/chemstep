@@ -37,7 +37,7 @@
 
 #define APP_NAME          "ChemStep"
 #define APP_VERSION_MAJOR 2
-#define APP_VERSION_MINOR 2
+#define APP_VERSION_MINOR 3
 #define APP_STR           APP_NAME " V" STR(APP_VERSION_MAJOR) "." STR(APP_VERSION_MINOR)
 
 /* -- Configuration -- */
@@ -51,11 +51,13 @@
 
 #define MECH_THREAD_PITCH 5.0f
 #define MECH_STEP_REV     200.0f
-//#define MECH_STEP_MICRO   16.0f
-#define MECH_STEP_MICRO   1.0f
 #define MECH_DIR_INVERT
 
-#define MECH_STEPS_PER_MM (MECH_STEP_REV * MECH_STEP_MICRO / MECH_THREAD_PITCH)
+// Microstepping range
+#define MECH_STEP_MICRO_MIN 1
+#define MECH_STEP_MICRO_MAX 16
+
+#define MECH_FULL_STEPS_PER_MM (MECH_STEP_REV / MECH_THREAD_PITCH)
 
 #define SPEED_MICROSECONDS_DELAY 100
 
@@ -76,10 +78,12 @@ bool ui_redraw = true;
 ui_state_t ui_state = UI_STEP;
 
 #define STEP_SIZE_COUNT 10
-#define STEP_SPD_COUNT 9
+#define STEP_SPD_COUNT 10
 
-#define EEPROM_STEP   0x00
-#define EEPROM_SPEED  0x01
+#define EEPROM_STEP       0x00
+#define EEPROM_SPEED      0x01
+#define EEPROM_MICROSTEP  0x02
+#define EEPROM_MODE       0x03
 
 //const static float stepSize[STEP_SIZE_COUNT] = {0.10f, 0.25f, 0.50f, 1.00f, 2.50f, 5.00f, 10.00f, 25.00f, 50.00f};
 const static float stepSize[STEP_SIZE_COUNT] = {1.00f, 2.50f, 5.00f, 10.00f, 25.00f, 50.00f, 75.0f, 100.0f, 125.0f, 150.0f};
@@ -87,8 +91,12 @@ static int8_t stepSizeSelect = 3;
 static unsigned long stepInterval = 0;
 
 //const static float stepSpeed[STEP_SPD_COUNT] = {0.1f, 0.2f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f};
-const static float stepSpeed[STEP_SPD_COUNT] = {5.0f, 10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
+const static float stepSpeed[STEP_SPD_COUNT] = {1.0f, 5.0f, 10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
 static int8_t stepSpeedSelect = 3;
+
+bool stepperEnable = true;
+bool modeOscillator = false;
+bool modeOscillatorDir = false;
 
 /* -- Default Parameters -- */
 typedef enum {STEP_FWD, STEP_REV} stepper_dir_t;
@@ -98,6 +106,7 @@ bool stepperState = false;
 long stepperPosition = 0;
 long stepperTarget = 0;
 unsigned long nextStep = 0;
+int8_t microsteps = MECH_STEP_MICRO_MIN;
 
 /* -- Debounce -- */
 Bounce triggerBounce = Bounce();
@@ -131,7 +140,7 @@ static uint8_t stopChar[8] = {
 };
 
 void updateInterval() {
-  stepInterval = 1000000UL / (MECH_STEPS_PER_MM * stepSpeed[stepSpeedSelect] * 2.0f);
+  stepInterval = 1000000UL / (MECH_FULL_STEPS_PER_MM * microsteps * stepSpeed[stepSpeedSelect] * 2.0f);
 }
 
 void get_lcd_key(key_t *current_key, bool *updated) {
@@ -236,14 +245,8 @@ void updateSerial() {
       }
     } else {
       // Numerical input
-
+      // TODO
     }
-
-    /*Serial.print("Process [");
-    Serial.print(serialBuffer);
-    Serial.print("] (");
-    Serial.print(serialCount, DEC);
-    Serial.println(")");*/
 
     // Reset state
     serialCount = 0;
@@ -266,13 +269,23 @@ void updateInput() {
     if (key != KEY_NONE) {
       switch (key) {
       case KEY_LEFT:
-        // Move backward
-        stepperTarget -= (long) (MECH_STEPS_PER_MM * stepSize[stepSizeSelect]);
+        if (modeOscillator) {
+          // If in oscillator mode then toggle operation
+          stepperEnable = !stepperEnable;
+        } else {
+          // Move backward
+          stepperTarget -= (long) (MECH_FULL_STEPS_PER_MM * microsteps * stepSize[stepSizeSelect]);
+        }
         break;
 
       case KEY_RIGHT:
-        // Move forward
-        stepperTarget += (long) (MECH_STEPS_PER_MM * stepSize[stepSizeSelect]);
+        if (modeOscillator) {
+          // If in oscillator mode then toggle operation
+          stepperEnable = !stepperEnable;
+        } else {
+          // Move forward
+          stepperTarget += (long) (MECH_FULL_STEPS_PER_MM * microsteps * stepSize[stepSizeSelect]);
+        }
         break;
 
       case KEY_UP:
@@ -345,9 +358,11 @@ void updateInput() {
   if ((millis() - held_time) > KEYPAD_HOLD_TIME && (key == KEY_LEFT || key == KEY_RIGHT || key == KEY_SELECT)) {
     // Move while button is held
     if (key == KEY_RIGHT) {
-      stepperTarget = LONG_MAX;
+      if (!modeOscillator)
+        stepperTarget = LONG_MAX;
     } else if (key == KEY_LEFT) {
-      stepperTarget = LONG_MIN;
+      if (!modeOscillator)
+        stepperTarget = LONG_MIN;
     } else if (key == KEY_SELECT) {
       // Reset position
       stepperTarget = 0;
@@ -359,12 +374,13 @@ void updateInput() {
 
     held = true;
   } else if (held) {
-    // Stop movment
-    stepperTarget = stepperPosition;
+    if (!modeOscillator) {
+      // Stop movment
+      stepperTarget = stepperPosition;
+      ui_redraw = true;
+    }
 
     held = false;
-
-    ui_redraw = true;
   }
 }
 
@@ -377,7 +393,7 @@ void updateLCD() {
 
   // Display position
   lcd.print("! ");
-  lcd.print(((float) stepperTarget) / MECH_STEPS_PER_MM, 2);
+  lcd.print(((float) stepperTarget) / (MECH_FULL_STEPS_PER_MM * microsteps), 2);
   lcd.print("mm");
 
   lcd.setCursor(0, 1);
@@ -400,12 +416,29 @@ void updateLCD() {
   ui_redraw = false;
 }
 
+bool ispoweroftwo(int8_t x) {
+  uint8_t n;
+
+  // Shift out bits counting how many are 1s
+  for (n = 0; x > 0; x >>= 1) {
+    if (x & 0x01)
+      n++;
+  }
+
+  // A power of two has exactly one bit set
+  return n == 1;
+}
+
 
 void setup(){
   int8_t x;
 
   /* Serial setup */
   Serial.begin(SERIAL_SPEED);
+
+  Serial.println(APP_STR);
+  Serial.println("Built: " __DATE__ " " __TIME__);
+  Serial.println("(c) Chris Harrison");
 
   /* LCD setup */
   lcd.begin(LCD_WIDTH, LCD_HEIGHT);
@@ -443,19 +476,93 @@ void setup(){
 
   if (x >= 0 && x < STEP_SIZE_COUNT)
     stepSizeSelect = x;
+  else
+    EEPROM.write(EEPROM_STEP, stepSizeSelect);
 
   x = EEPROM.read(EEPROM_SPEED);
 
   if (x >= 0 && x < STEP_SPD_COUNT)
     stepSpeedSelect = x;
+  else
+    EEPROM.write(EEPROM_SPEED, stepSpeedSelect);
+  
+  x = EEPROM.read(EEPROM_MICROSTEP);
+
+  if (x >= MECH_STEP_MICRO_MIN && x <= MECH_STEP_MICRO_MAX && ispoweroftwo(x))
+    microsteps = x;
+  else
+    EEPROM.write(EEPROM_MICROSTEP, microsteps);
+
+  // Check for configuration changes through keypressed during startup
+  key_t key;
+  bool updated;
+
+  get_lcd_key(&key, &updated);
+
+  if (key != KEY_NONE) {
+    switch (key) {
+    // Increase microsteps
+    case KEY_UP:
+      microsteps <<= 1;
+
+      if (microsteps > MECH_STEP_MICRO_MAX)
+        microsteps = MECH_STEP_MICRO_MAX;
+
+      break;
+
+    // Decrease microsteps
+    case KEY_DOWN:
+      microsteps >>= 1;
+
+      if (microsteps < MECH_STEP_MICRO_MIN)
+        microsteps = MECH_STEP_MICRO_MIN;
+
+      break;
+
+    case KEY_SELECT:
+      stepperEnable = false;
+      modeOscillator = true;
+      break;
+
+    default:
+      break;
+    }
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+
+    switch (key) {
+    case KEY_UP:
+    case KEY_DOWN:
+      lcd.print("Microsteps:");
+      lcd.setCursor(0, 1);
+      lcd.print(microsteps);
+
+      EEPROM.write(EEPROM_MICROSTEP, microsteps);
+      break;
+    
+    case KEY_SELECT:
+      lcd.print("Oscillator mode");
+      lcd.setCursor(0, 1);
+      lcd.print("enabled");
+
+    default:
+      break;
+    }
+
+    delay(1000);
+    lcd.clear();
+  }
 
   // Initial speed calculation
   updateInterval();
 }
 
 void loop() {
-
   bool moving = false;
+
+  ui_redraw = true;
+  updateLCD();
 
   while (1) {
     // Process any waiting serial commands
@@ -472,70 +579,87 @@ void loop() {
       stepperTarget = stepperPosition;
 
     // Run motor
-    if (stepperTarget != stepperPosition) {
-      if (!moving) {
-        lcd.setCursor(0, 0);
-        lcd.print(">");
-        moving = true;
-      }
+    if (stepperEnable) {
+      if (stepperTarget != stepperPosition) {
+        if (!moving) {
+          lcd.setCursor(0, 0);
+          lcd.print(">");
+          moving = true;
+        }
 
-      if (micros() >= nextStep) {
-        // Calculate time for next step
-        nextStep = micros() + stepInterval;
+        if (micros() >= nextStep) {
+          // Calculate time for next step
+          nextStep = micros() + stepInterval;
 
-        if (!stepperState) {
-          // Check for direction change on positive edge
-          if (stepper_dir == STEP_FWD) {
-            if (stepperTarget < stepperPosition) {
-              stepper_dir = STEP_REV;
+          if (!stepperState) {
+            // Check for direction change on positive edge
+            if (stepper_dir == STEP_FWD) {
+              if (stepperTarget < stepperPosition) {
+                stepper_dir = STEP_REV;
 
-#ifndef MECH_DIR_INVERT
-              digitalWrite(PIN_MOTOR_DIR, HIGH);
-#else
-              digitalWrite(PIN_MOTOR_DIR, LOW);
-#endif
+                #ifndef MECH_DIR_INVERT
+                  digitalWrite(PIN_MOTOR_DIR, HIGH);
+                #else
+                  digitalWrite(PIN_MOTOR_DIR, LOW);
+                #endif
+              }
+            } else {
+              if (stepperTarget > stepperPosition) {
+                stepper_dir = STEP_FWD;
+
+                #ifndef MECH_DIR_INVERT
+                  digitalWrite(PIN_MOTOR_DIR, LOW);
+                #else
+                  digitalWrite(PIN_MOTOR_DIR, HIGH);
+                #endif
+              }
             }
+
+            digitalWrite(PIN_MOTOR_STEP, HIGH);
           } else {
-            if (stepperTarget > stepperPosition) {
-              stepper_dir = STEP_FWD;
+            digitalWrite(PIN_MOTOR_STEP, LOW);
 
-#ifndef MECH_DIR_INVERT
-              digitalWrite(PIN_MOTOR_DIR, LOW);
-#else
-              digitalWrite(PIN_MOTOR_DIR, HIGH);
-#endif
-            }
+            // Count step
+            stepperPosition += (stepper_dir == STEP_FWD ? 1 : -1);
           }
 
-          digitalWrite(PIN_MOTOR_STEP, HIGH);
+          // Update state
+          stepperState = !stepperState;
+
+          // Check for loop lag (which will make the lag worse...)
+          #ifdef SERIAL_LAG_DETECT
+            if (micros() > nextStep) {
+              Serial.println("LAG!");
+            }
+          #endif
+        }
+      } else {
+        // In oscillator mode toggle direction and continue movment
+        if (modeOscillator) {
+          // Redraw at the limits of the oscillation (lags a bit)
+          ui_redraw = true;
+
+          // Set new target based on previous movment
+          if (modeOscillatorDir)
+            stepperTarget -= (long) (MECH_FULL_STEPS_PER_MM * microsteps * stepSize[stepSizeSelect]);
+          else
+            stepperTarget += (long) (MECH_FULL_STEPS_PER_MM * microsteps * stepSize[stepSizeSelect]);
+
+          modeOscillatorDir = !modeOscillatorDir;
         } else {
-          digitalWrite(PIN_MOTOR_STEP, LOW);
-
-          // Count step
-          stepperPosition += (stepper_dir == STEP_FWD ? 1 : -1);
+          // Moving has just finished, redraw display
+          if (moving) {
+            ui_redraw = true;
+            moving = false;
+          }
         }
 
-        // Update state
-        stepperState = !stepperState;
+        // Force next step if necessary by setting next step timer to zero
+        nextStep = 0;
 
-        // Check for loop lag (which will make the lag worse...)
-#ifdef SERIAL_LAG_DETECT
-        if (micros() > nextStep) {
-          Serial.println("LAG!");
-        }
-#endif
+        // Update LCD
+        updateLCD();
       }
-    } else {
-      if (moving) {
-        ui_redraw = true;
-        moving = false;
-      }
-
-      // Force next step if necessary
-      nextStep = 0;
-
-      // Update LCD
-      updateLCD();
     }
   }
 }
